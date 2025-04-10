@@ -1,3 +1,10 @@
+#VM7000/PW3335 Data Collection 0_5_0
+#-------------------------------------------------------------------------------
+#VM7000 info: ohkura VM7000A Paperless Recorder
+#       document : WXPVM70mnA0002E March, 2014(Rev.5) 
+#PW3335 info : GW Instek PW3335 Programmable DC Power Meter
+#       document : PW_Communicator_zh / 2018 年1月出版 (改定1.60版)
+#-------------------------------------------------------------------------------
 #Rev 0_1 2025/3/19 紀錄VM7000與PW3335數據
 #Rev 0_2 2025/3/20 增加設備紀錄開關選項
 #Rev 0_2_3 2025/3/24 6個devices各自獨立有開始,停止紀錄的功能
@@ -6,8 +13,8 @@
 #Rev 0_4_0 2025/3/27 圖表改為內崁canvas
 #Rev 0_5_0 2025/4/9 增加多工位的功能,每個工位獨立顯示與紀錄
 #-------------------------------------------------------------------------------
-# SAMPO VM7000/PW3335 Data Collection 0_5_0
-#-------------------------------------------------------------------------------
+
+
 import socket
 import time
 import tkinter as tk
@@ -209,9 +216,9 @@ class App:
 
         # Frequency selection
         ttk.Label(frame, text="記錄頻率(sec):").grid(row=1, column=0, padx=5, pady=5)
-        frequency_var = tk.IntVar(value=3)  # 預設為 60 秒
+        frequency_var = tk.IntVar(value=3)  # 預設為 60 秒, 3秒用來debug
         frequency_menu = ttk.Combobox(frame, textvariable=frequency_var, state="readonly")
-        frequency_menu['values'] = [3,60, 180, 300]
+        frequency_menu['values'] = [60, 180, 300]
         frequency_menu.grid(row=1, column=1, padx=5, pady=5)
 
         # VM7000 頻道設定文字框
@@ -784,19 +791,12 @@ class App:
 
 
 if __name__ == "__main__":
-    now = datetime.now()
-    specific_date = datetime(2025, 12, 31)
-    if now > specific_date:
-        tk.messagebox.showinfo("Info", " SAMPO VM7000/PW3335 Data Collection !!")
-        sys.exit()
-
     root = tk.Tk()
-
     # 初始化 tk.StringVar() 變數
     start_date = tk.StringVar()
     start_time = tk.StringVar()
     end_date = tk.StringVar()
     end_time = tk.StringVar()
-    root.title("SAMPO VM7000/PW3335 Data Collection 0_5_0")
+    root.title("VM7000/PW3335 Data Collection 0_5_0")
     app = App(root)
     root.mainloop()
