@@ -1,3 +1,9 @@
+# 儀器資訊及版本
+- **VM7000**: ohkura VM7000A Paperless Recorder
+- document : WXPVM70mnA0002E March, 2014(Rev.5) 
+- **PW3335**: GW Instek PW3335 Programmable DC Power Meter
+- document : PW_Communicator_zh / 2018 年1月出版 (改定1.60版)
+
 # 更新紀錄
 
 ## Version 0.5.0 (2025/04/09)
