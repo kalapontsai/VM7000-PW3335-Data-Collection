@@ -1,4 +1,4 @@
-#VM7000/PW3335 Data Collection 0_5_0
+# SAMPO VM7000/PW3335 Data Collection
 #-------------------------------------------------------------------------------
 #VM7000 info: ohkura VM7000A Paperless Recorder
 #       document : WXPVM70mnA0002E March, 2014(Rev.5) 
@@ -12,9 +12,9 @@
 #Rev 0_3_8 2025/3/26 增加計算區間平均溫度功能,以功能鍵[ctrl]+上下鍵調整日期與時間
 #Rev 0_4_0 2025/3/27 圖表改為內崁canvas
 #Rev 0_5_0 2025/4/9 增加多工位的功能,每個工位獨立顯示與紀錄
+#Rev 0_5_1 2025/4/14 停止紀錄時,以訊息框確認是否停止紀錄,打包加入ico檔
+#Rev 0_5_2 2025/5/8 增加log記錄功能,修正icon檔案讀取錯誤
 #-------------------------------------------------------------------------------
-
-
 import socket
 import time
 import tkinter as tk
@@ -24,14 +24,47 @@ from datetime import datetime, timedelta  # 修正：添加 timedelta 的導入
 import pandas as pd  # 修正：添加 pandas 的導入
 import threading
 import os,sys
+from ctypes import windll
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib import rcParams
 from matplotlib.ticker import FuncFormatter
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
-from decimal import Decimal
+import matplotlib.dates as mdates
+import tempfile
 
+# 確保 LOG 檔案儲存到執行檔所在目錄或臨時目錄
+if getattr(sys, 'frozen', False):  # 如果是 pyinstaller 打包的執行檔
+    APP_DIR = os.path.dirname(sys.executable)
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+LOG_PATH = os.path.join(APP_DIR, "VM7000_Pw3335.log")
+
+# 如果無法寫入執行檔目錄，則使用臨時目錄
+if not os.access(APP_DIR, os.W_OK):
+    LOG_PATH = os.path.join(tempfile.gettempdir(), "VM7000_Pw3335.log")
+
+
+def log_to_file(message):
+    """將訊息寫入 LOG 檔案"""
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(message + "\n")
+    except Exception as e:
+        print(f"無法寫入 LOG 檔案: {e}")
+def log_error(message):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    msg = f"[ERROR] {timestamp} - {message}"
+    print(msg)
+    log_to_file(msg)
+
+def log_info(message):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    msg = f"[INFO] {timestamp} - {message}"
+    print(msg)
+    log_to_file(msg)
 
 # 設定 matplotlib 使用的字體
 rcParams['font.sans-serif'] = ['Microsoft JhengHei']  # 使用微軟正黑體
@@ -148,6 +181,8 @@ class PW3335:
         except Exception as e:
             print(f"Error parsing response: {response}, Exception: {e}")
             raise ValueError(f"Failed to parse response: {response}")
+            log_error(f"Failed to parse response: {response}")
+
 
 class App:
     def __init__(self, root):
@@ -218,7 +253,7 @@ class App:
         ttk.Label(frame, text="記錄頻率(sec):").grid(row=1, column=0, padx=5, pady=5)
         frequency_var = tk.IntVar(value=3)  # 預設為 60 秒, 3秒用來debug
         frequency_menu = ttk.Combobox(frame, textvariable=frequency_var, state="readonly")
-        frequency_menu['values'] = [60, 180, 300]
+        frequency_menu['values'] = [10, 60, 180, 300]
         frequency_menu.grid(row=1, column=1, padx=5, pady=5)
 
         # VM7000 頻道設定文字框
@@ -303,10 +338,13 @@ class App:
         # Create a frame for the toolbar
         toolbar_frame = tk.Frame(frame)
         toolbar_frame.grid(row=7, column=3, columnspan=7, padx=5, pady=5)
-
         # Add the Navigation Toolbar to the frame
         toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
         toolbar.update()
+
+        # add memo text box
+        memo_text = tk.Text(frame, height=8, width=60, wrap="word")
+        memo_text.grid(row=4, rowspan= 3, column=3, columnspan=9, padx=5, pady=5)
 
         # Create subplots for temperature and power
         ax_temp = figure.add_subplot(211, facecolor='lightgray')
@@ -368,7 +406,8 @@ class App:
             avg_temp_text = getattr(self, f"{selected_station}_avg_temp_text", None)
 
             if not all([start_date_entry, start_time_entry, end_date_entry, end_time_entry, avg_temp_text]):
-                raise AttributeError(f"One or more required widgets for {selected_station} are not defined.")
+                raise AttributeError(f"calculate_avg_temp:One or more required widgets for {selected_station} are not defined.")
+                log_error(f"calculate_avg_temp:One or more required widgets for {selected_station} are not defined.")
 
             # 獲取開始和結束時間
             start_datetime = pd.to_datetime(f"{start_date_entry.get()} {start_time_entry.get()}")
@@ -410,7 +449,8 @@ class App:
             avg_temp_text.config(state="disabled")
 
         except Exception as e:
-            tk.messagebox.showerror("Error", f"計算平均溫度時發生錯誤: {e}")
+            tk.messagebox.showerror("Error", f"calculate_avg_temp:計算平均溫度時發生錯誤: {e}")
+            log_error(f"calculate_avg_temp:計算平均溫度時發生錯誤: {e}")
 
     def update_temperature_display(self, station_name, temperatures):
         """更新溫度數據顯示"""
@@ -503,7 +543,8 @@ class App:
             self.pw3335_instances[pw_ip] = PW3335(pw_ip)
             self.pw3335_instances[pw_ip].connect()
         except Exception as e:
-            tk.messagebox.showerror("Error", f"Failed to connect to devices: {e}")
+            tk.messagebox.showerror("Error", f"start_collect:Failed to connect to devices: {e}")
+            log_error(f"start_collect:Failed to connect to devices: {e}")
             return
 
         self.collecting[vm_ip] = True
@@ -519,6 +560,7 @@ class App:
 
         # 啟動數據收集
         threading.Thread(target=self.collect_data, args=(vm_ip, pw_ip, channels, station_name), daemon=True).start()
+        log_info(f"start_collect:Started data collection for {station_name}")
 
         # 在主執行緒中啟動即時監看圖表
         self.show_live_plot(station_name)
@@ -531,6 +573,10 @@ class App:
 
 
     def stop_collection(self, station_name):
+        if not tk.messagebox.askyesno("確認", f"是否停止 {station_name} 的數據收集？"):
+            # 停止數據收集
+            return
+
         """停止指定工位的數據收集"""
         # 獲取對應工位的 IP 地址
         station_index = int(station_name.replace("工位", "")) - 1
@@ -588,6 +634,7 @@ class App:
         tab_index = int(station_name.replace("工位", "")) - 1
         self.original_text = self.notebook.tab(tab_index, option="text")
         self.notebook.tab(tab_index, text=f"工位{tab_index + 1}")
+        log_info(f"stop_collect:Stopped data collection for {station_name}")
 
 
     def collect_data(self, vm_ip, pw_ip, channels, station_name):
@@ -605,6 +652,7 @@ class App:
                 frequency_var = getattr(self, f"{station_name}_frequency_var", None)
                 if not frequency_var:
                     raise AttributeError(f"Frequency variable for {station_name} is not defined.")
+                    log_error(f"Frequency variable for {station_name} is not defined.")
 
                 while self.collecting.get(vm_ip, False):
                     temperatures = [None] * len(channels)
@@ -623,6 +671,7 @@ class App:
                         except Exception as e:
                             print(f"Error collecting PW3335 data for {pw_ip}: {e}")
                             tk.messagebox.showerror("Error", f"Error collecting PW3335 data for {pw_ip}: {e}")
+                            log_error(f"Error collecting PW3335 data for {pw_ip}: {e}")
                     
                     now = datetime.now()
                     writer.writerow([now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S")] + temperatures + power_data)
@@ -648,6 +697,7 @@ class App:
             except Exception as e:
                 print(f"Data collection error: {e}")
                 tk.messagebox.showerror("Error", f"Data collection error: {e}")
+                log_error(f"Data collection error: {e}")
                 self.stop_collection(station_name)  # 傳遞 station_name 以便停止正確的工位
 
     def show_live_plot(self, station_name):
@@ -657,6 +707,7 @@ class App:
             figure = getattr(self, f"{station_name}_figure", None)
             if not figure:
                 raise AttributeError(f"Figure for {station_name} is not defined.")
+                log_error(f"Figure for {station_name} is not defined.")
 
             # 清空舊的圖表
             figure.clear()
@@ -677,7 +728,7 @@ class App:
             ax_temp.grid(axis='y', linestyle='--', alpha=0.7)
             ax_power.grid(axis='y', linestyle='--', alpha=0.7)
 
-            ax_temp.yaxis.set_major_locator(plt.MultipleLocator(5))  # 每隔 5 度顯示一條格線
+            #ax_temp.yaxis.set_major_locator(plt.MultipleLocator(5))  # 每隔 5 度顯示一條格線
 
             # 溫度子圖
             channels = self.parse_channels(getattr(self, f"{station_name}_vm7000_channels_var").get())
@@ -716,27 +767,7 @@ class App:
                 x_range = self.get_x_axis_range(station_name)
                 ax_temp.set_xlim(x_range)
                 ax_power.set_xlim(x_range)
-
-                # 以最大最小值自動調整 Y 軸格線
-                if len(temperature_data) > 0:
-                    all_temps = [temp for temps in temperature_data for temp in temps if temp is not None]
-                    if all_temps:
-                        min_temp, max_temp = min(all_temps), max(all_temps)
-                        #print({max_temp, min_temp})
-                        if (max_temp - min_temp) > 30:
-                            ax_temp.yaxis.set_major_locator(plt.MultipleLocator(10))
-                            ax_temp.yaxis.set_minor_locator(plt.MultipleLocator(5))
-                            ax_temp.set_ylim(min_temp - 5, max_temp + 5)
-                        elif (max_temp - min_temp) < 5:
-                            ax_temp.yaxis.set_major_locator(plt.MultipleLocator(1))
-                            ax_temp.yaxis.set_minor_locator(plt.MultipleLocator(0.5))
-                            ax_temp.set_ylim(min_temp - 1, max_temp + 1)
-                        else:
-                            ax_temp.yaxis.set_major_locator(plt.MultipleLocator(5))
-                            ax_temp.yaxis.set_minor_locator(plt.MultipleLocator(2.5))
-                            ax_temp.set_ylim(min_temp - 2, max_temp + 2)
-                        
-
+                ax_power.xaxis.set_major_formatter(mdates.DateFormatter("%d-%H:%M"))
                 ax_temp.relim()
                 ax_temp.autoscale_view()
                 ax_power.relim()
@@ -788,15 +819,45 @@ class App:
             )
         else:
             self.root.destroy()  # 正常退出程序
+            log_info("程序正常退出")
+
 
 
 if __name__ == "__main__":
+    log_info("程序啟動")
     root = tk.Tk()
+    def resource_path(relative_path):
+        try:
+            base_path = sys._MEIPASS  # PyInstaller 打包後會存在這個暫存路徑
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
+    now = datetime.now()
+    specific_date = datetime(2025, 12, 31)
+    if now > specific_date:
+        tk.messagebox.showinfo("Info", " SAMPO VM7000/PW3335 Data Collection !!")
+        sys.exit()
+    AppTitle = "SAMPO VM7000/PW3335 Data Collection 0_5_2"
+    ModelID = AppTitle + now.strftime("%Y%m%d_%H%M%S")
+    # 讓工作列圖示正確顯示
+    windll.shell32.SetCurrentProcessExplicitAppUserModelID(ModelID)
+    # 設定執行檔的路徑變數
+    exe_path = os.path.dirname(os.path.abspath(__file__))
+    ico_file = exe_path + "\\VM7000_PW3335.ico"
+    if os.path.exists(ico_file):
+        ico_path = resource_path(ico_file)
+        root.iconbitmap(ico_path)  # 設定視窗圖示
+        print(f"Icon file found: {ico_file}")
+    else:
+        #print(f"Icon file not found: {ico_file}")
+        log_error(f"Icon file not found: {ico_file}")
+
     # 初始化 tk.StringVar() 變數
     start_date = tk.StringVar()
     start_time = tk.StringVar()
     end_date = tk.StringVar()
     end_time = tk.StringVar()
-    root.title("VM7000/PW3335 Data Collection 0_5_0")
+    root.title(AppTitle)
     app = App(root)
     root.mainloop()
